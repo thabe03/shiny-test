@@ -1,7 +1,36 @@
 library(shiny)
+library(ggplot2)
+library(dplyr) # select
+library(DT)
+
+# Get the data
+
+file <- "https://github.com/rstudio-education/shiny-course/raw/main/movies.RData"
+destfile <- "movies.RData"
+
+download.file(file, destfile)
+load("movies.RData")
+all_studios <- sort(unique(movies$studio))
+min_date <- min(movies$thtr_rel_date)
+max_date <- max(movies$thtr_rel_date)
 
 ui <- fluidPage(
   titlePanel("Hello Shiny!"),
+  
+  textInput(
+    inputId = "custom_text",
+    label = "Input some text here:"
+  ),
+  
+  strong("Text is shown below:"),
+  
+  dateRangeInput(
+    inputId = "date",
+    label = "Select dates:",
+    start = "2013-01-01", end = "2014-01-01",
+    min = min_date, max = max_date,
+    startview = "year"
+  ),
   
   fluidRow(
     
@@ -76,7 +105,34 @@ ui <- fluidPage(
   
   sidebarLayout(
     # position = "right",
+    
     sidebarPanel(
+      HTML(paste("Enter a value between 1 and", "651")),
+      numericInput(
+        inputId = "n",
+        value = 3,
+        step = 10,
+        label = "Numérique"
+      ),
+      selectInput(
+        inputId = "studio",
+        label = "Select studio:",
+        choices = all_studios,
+        selected = "20th Century Fox",
+        multiple = TRUE
+      ),
+      selectInput(
+        inputId = "y",
+        label = "Y-axis:",
+        choices = c("imdb_rating", "imdb_num_votes", "critics_score", "audience_score", "runtime"),
+        selected = "audience_score"
+      ),
+      selectInput(
+        inputId = "x",
+        label = "X-axis:",
+        choices = c("imdb_rating", "imdb_num_votes", "critics_score", "audience_score", "runtime"),
+        selected = "critics_score"
+      ),
       sliderInput(inputId = "bins",
                   label = "Number of bins:",
                   min = 1,
@@ -101,13 +157,21 @@ ui <- fluidPage(
       # img(src = "my_image.png", height = 72, width = 72) dans www dossier
       plotOutput(outputId = "distPlot"),
       textOutput("selected_var"), # dataTableOutput imageOutput plotOutput tableOutput textOutput uiOutput verbatim
-      textOutput("min_max")
-      
+      textOutput("min_max"),
+      plotOutput(outputId = "scatterplot"),
+      textOutput(outputId = "custom_text"),
+      dataTableOutput(outputId = "moviestable"),
+      dataTableOutput(outputId = "moviestable2"),
+      plotOutput(outputId = "scatterplot2")
     )
   )
 )
 
 server <- function(input, output) {
+  output$scatterplot <- renderPlot({
+    ggplot(data = movies, aes_string(x = input$x, y = input$y)) +
+      geom_point()
+  })
   output$distPlot <- renderPlot({
     x    <- faithful$waiting
     bins <- seq(min(x), max(x), length.out = input$bins + 1)
@@ -121,6 +185,36 @@ server <- function(input, output) {
   output$min_max <- renderText({ 
     paste("You have chosen a range that goes from",
           input$range[1], "to", input$range[2])
+  })
+  output$user_text <- renderText({ custom_text })
+  output$moviestable <- renderDataTable({
+    req(input$n) # required
+    movies_sample <- movies %>%
+      sample_n(input$n) %>%
+      select(title:studio)
+    datatable(
+      data = movies_sample,
+      options = list(pageLength = 10),
+      rownames = FALSE
+    )
+  })
+  output$moviestable2 <- renderDataTable({
+    req(input$studio)
+    movies_from_selected_studios <- movies %>%
+      filter(studio %in% input$studio) %>%
+      select(title:studio)
+    DT::datatable(
+      data = movies_from_selected_studios,
+      options = list(pageLength = 10),
+      rownames = FALSE
+    )
+  })
+  output$scatterplot2 <- renderPlot({
+    req(input$date)
+    movies_selected_date <- movies %>%
+      filter(thtr_rel_date >= as.POSIXct(input$date[1]) & thtr_rel_date <= as.POSIXct(input$date[2]))
+    ggplot(data = movies_selected_date, aes(x = critics_score, y = audience_score, color = mpaa_rating)) +
+      geom_point()
   })
   
 }
